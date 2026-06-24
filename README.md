@@ -86,9 +86,50 @@ bet_assistant/
   backtest/            Backtest engine, metrics, calibration
   bankroll/            Bankroll manager, stop-loss, responsible-gambling controls
   pipeline.py          Wires data -> model -> odds -> value -> staking
+  demo.py              Reusable demo analysis (shared by CLI and web API)
   cli.py               Demo entry point
+api/                   Vercel Python serverless functions (api/analyze.py)
+public/                Static web frontend (index.html)
+scripts/devserver.py   Local dev server mirroring Vercel routing
 tests/                 Unit tests for the math and the guarantees
 ```
+
+## Web UI / deploy to Vercel
+
+A lightweight frontend is included so the analysis runs in the browser. It keeps
+the responsible-gambling notice persistent, renders each value bet as a card
+with its uncertainty band and reasoning, and has a self-exclusion / cool-off
+control that pauses recommendations.
+
+**Run locally** (no third-party deps):
+
+```bash
+python scripts/devserver.py     # serves http://localhost:8000
+```
+
+**Deploy to Vercel** — zero extra setup; the repo is already structured for it:
+
+```bash
+npm i -g vercel     # if needed
+vercel              # from the repo root; accept the defaults
+```
+
+How it maps to Vercel:
+
+- `public/index.html` is served as the static site at `/`.
+- `api/analyze.py` is a Python serverless function at `/api/analyze?sport=…`.
+  It returns a JSON demo analysis from `bet_assistant.demo.run_demo`.
+- `vercel.json` wires the function (memory/timeout) and bundles the
+  `bet_assistant/` package with it via `includeFiles`.
+- `requirements.txt` is intentionally empty — the package is pure standard
+  library, so there is nothing to install.
+
+> The hosted demo runs on **synthetic data** with the models enabled purely to
+> illustrate the output. It is a demonstration of the analysis surface, not live
+> betting advice — every model is still disabled by default in real use until it
+> beats the vig-free closing line in backtest. To serve real fixtures, swap
+> `MockProvider` for `APIFootballProvider` (store the key as a Vercel
+> environment variable) inside the serverless function.
 
 ## Using a real data provider (API-Football)
 
