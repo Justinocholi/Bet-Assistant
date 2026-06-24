@@ -13,7 +13,9 @@ from .providers import (
     ProviderError,
     InsufficientDataError,
     MockProvider,
+    safe_get_fixtures,
 )
+from .apifootball import APIFootballProvider
 
 __all__ = [
     "DataQuality",
@@ -26,4 +28,6 @@ __all__ = [
     "ProviderError",
     "InsufficientDataError",
     "MockProvider",
+    "safe_get_fixtures",
+    "APIFootballProvider",
 ]

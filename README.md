@@ -90,6 +90,42 @@ bet_assistant/
 tests/                 Unit tests for the math and the guarantees
 ```
 
+## Using a real data provider (API-Football)
+
+The live adapter lives behind the same `DataProvider` interface as the offline
+mock, so nothing else in the tool changes:
+
+```python
+from datetime import date
+from bet_assistant.data import APIFootballProvider, safe_get_fixtures
+from bet_assistant.data.schema import Sport
+from bet_assistant.models.poisson import DixonColesModel
+
+provider = APIFootballProvider(api_key="YOUR_KEY", league=39, season=2023)  # EPL
+matches, error = safe_get_fixtures(provider, Sport.FOOTBALL, date(2023, 8, 1))
+if error:
+    print(error)            # graceful degradation — never a fabricated result
+else:
+    for m in matches:
+        out = DixonColesModel().market_1x2(m)
+        # ... feed out into the value/staking pipeline
+```
+
+Properties the adapter guarantees:
+
+- Any transport/auth/quota failure becomes a `ProviderError`; `safe_get_fixtures`
+  turns that into an empty result plus an explanatory message.
+- Missing odds, form or head-to-head are recorded in `Match.quality.missing_fields`
+  and never invented; thin history lowers `effective_samples`, which the value
+  gate uses to emit "no bet — insufficient data".
+- No third-party dependencies — it uses a small stdlib HTTP transport that is
+  injectable, so the adapter is fully unit-tested offline against canned JSON.
+
+Football is mapped end-to-end (fixtures + 1X2 odds + team form). Basketball and
+tennis raise a clear error until their endpoint mappers are added — by design,
+rather than guessing. Historical backfill for backtesting is a separate batch
+job (see `get_results`).
+
 ## Status of models
 
 By default all models are **disabled until validated**. Run the backtest
