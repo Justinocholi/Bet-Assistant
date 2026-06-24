@@ -50,12 +50,17 @@ class EloModel:
         ra.games += 1
 
     def train(self, results) -> "EloModel":
-        """Fit ratings from an iterable of MatchResult (two-way moneyline)."""
+        """Fit ratings from an iterable of MatchResult (two-way outcomes).
+
+        Training depends only on settled outcomes, not on odds, so it works with
+        result backfills that carry no price data. The first market whose winner
+        is ``home``/``away`` is used.
+        """
         for res in results:
-            line = res.match.odds[0]
-            market = line.market
-            winner = res.outcomes.get(market)
-            if winner not in ("home", "away"):
+            winner = next(
+                (w for w in res.outcomes.values() if w in ("home", "away")), None
+            )
+            if winner is None:
                 continue
             self.update(res.match.home, res.match.away, home_won=(winner == "home"))
         return self

@@ -62,9 +62,11 @@ class GlickoModel:
         p.rd = max(30.0, new_rd)  # floor so a player never looks perfectly known
 
     def train(self, results) -> "GlickoModel":
+        """Fit ratings from settled outcomes (odds not required)."""
         for res in results:
-            line = res.match.odds[0]
-            winner_sel = res.outcomes.get(line.market)
+            winner_sel = next(
+                (w for w in res.outcomes.values() if w in ("home", "away")), None
+            )
             if winner_sel == "home":
                 self.update(res.match.home, res.match.away)
             elif winner_sel == "away":

@@ -95,6 +95,13 @@ class FakeTransport:
                 raise HttpError(f"simulated failure for {path}")
         if "/fixtures/headtohead" in url:
             return _h2h_response()
+        if "/injuries" in url:
+            return {"errors": [], "response": []}  # no injuries
+        if "/fixtures" in url and "last=" in url:
+            # The rest-days lookup: a team's most recent finished fixture.
+            return {"errors": [], "response": [
+                {"fixture": {"id": 900, "date": "2023-07-25T15:00:00+00:00"}}
+            ]}
         if "/fixtures" in url:
             return _fixtures_response()
         if "/teams/statistics" in url:

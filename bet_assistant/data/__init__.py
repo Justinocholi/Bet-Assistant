@@ -16,6 +16,13 @@ from .providers import (
     safe_get_fixtures,
 )
 from .apifootball import APIFootballProvider
+from .apibasketball import APIBasketballProvider
+from .apitennis import APITennisProvider
+from .history import (
+    ScoredFixture,
+    outcomes_from_score,
+    build_pointintime_results,
+)
 
 __all__ = [
     "DataQuality",
@@ -30,4 +37,9 @@ __all__ = [
     "MockProvider",
     "safe_get_fixtures",
     "APIFootballProvider",
+    "APIBasketballProvider",
+    "APITennisProvider",
+    "ScoredFixture",
+    "outcomes_from_score",
+    "build_pointintime_results",
 ]

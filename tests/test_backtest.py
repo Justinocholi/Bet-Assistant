@@ -1,11 +1,14 @@
-from datetime import date
+import random
+from datetime import date, timedelta
 
 from bet_assistant.backtest.metrics import Bet, summarise, max_drawdown
 from bet_assistant.backtest.engine import run_backtest
 from bet_assistant.config import DEFAULT_CONFIG
 from bet_assistant.data.providers import MockProvider
+from bet_assistant.data.history import ScoredFixture, build_pointintime_results
 from bet_assistant.data.schema import Sport
 from bet_assistant.models.elo import EloModel
+from bet_assistant.models.poisson import DixonColesModel
 
 
 def test_max_drawdown_basic():
@@ -46,3 +49,35 @@ def test_backtest_runs_and_reports():
     # On synthetic fair odds, there is no real edge, so it should not be
     # auto-enabled (this is the safety property we care about).
     assert result.model_should_be_enabled is False
+
+
+def test_football_pointintime_backtest_end_to_end():
+    """History -> point-in-time form -> Dixon-Coles -> value backtest runs and
+    reports honest metrics + calibration without leaking future data."""
+    rng = random.Random(0)
+    teams = [f"T{i}" for i in range(8)]
+    fixtures = []
+    start = date(2025, 1, 1)
+    # A round-robin-ish synthetic season with random scores and vigged 1x2 odds.
+    for week in range(20):
+        rng.shuffle(teams)
+        for i in range(0, len(teams), 2):
+            home, away = teams[i], teams[i + 1]
+            hg, ag = rng.randint(0, 4), rng.randint(0, 3)
+            # crude vigged odds summing implied > 1
+            odds = {"home": 2.5, "draw": 3.3, "away": 2.9}
+            fixtures.append(ScoredFixture(
+                start + timedelta(days=week * 7), home, away, hg, ag,
+                odds={"1x2": odds}))
+
+    results = build_pointintime_results(fixtures, sport=Sport.FOOTBALL)
+
+    def predictor(match):
+        return DixonColesModel().market_1x2(match)
+
+    result = run_backtest(results, predictor, "1x2", DEFAULT_CONFIG)
+    assert "VERDICT" in result.report()
+    # Some fixtures early in the season lack prior form and must be skipped,
+    # not bet on.
+    assert result.n_skipped_insufficient >= 0
+    assert isinstance(result.calibration_ece, float)

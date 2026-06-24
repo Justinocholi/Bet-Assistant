@@ -4,12 +4,17 @@ running ROI honestly — including losing streaks.
 
 from __future__ import annotations
 
+import json
+import os
+import tempfile
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Optional
 
 from ..config import BankrollConfig
 from .responsible import ResponsibleGambling
+
+_SCHEMA_VERSION = 1
 
 
 class StakingHalted(RuntimeError):
@@ -32,6 +37,31 @@ class BetRecord:
         if not self.settled or self.won is None:
             return 0.0
         return self.stake * (self.decimal_odds - 1.0) if self.won else -self.stake
+
+    def to_dict(self) -> dict:
+        return {
+            "market": self.market,
+            "selection": self.selection,
+            "stake": self.stake,
+            "decimal_odds": self.decimal_odds,
+            "model_prob": self.model_prob,
+            "placed_on": self.placed_on.isoformat(),
+            "settled": self.settled,
+            "won": self.won,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "BetRecord":
+        return cls(
+            market=d["market"],
+            selection=d["selection"],
+            stake=d["stake"],
+            decimal_odds=d["decimal_odds"],
+            model_prob=d["model_prob"],
+            placed_on=date.fromisoformat(d["placed_on"]),
+            settled=d.get("settled", False),
+            won=d.get("won"),
+        )
 
 
 @dataclass
@@ -145,3 +175,59 @@ class BankrollManager:
             else:
                 break
         return streak
+
+    # -- persistence -------------------------------------------------------
+
+    def to_dict(self) -> dict:
+        """Serialise the full ledger so tracking survives restarts."""
+        return {
+            "schema_version": _SCHEMA_VERSION,
+            "starting": self.starting,
+            "bankroll": self.bankroll,
+            "halted": self._halted,
+            "excluded_until": (
+                self.responsible.excluded_until.isoformat()
+                if self.responsible.excluded_until
+                else None
+            ),
+            "bets": [b.to_dict() for b in self.bets],
+        }
+
+    def save(self, path: str) -> None:
+        """Atomically write the ledger to ``path`` (temp file + rename)."""
+        data = json.dumps(self.to_dict(), indent=2)
+        directory = os.path.dirname(os.path.abspath(path))
+        fd, tmp = tempfile.mkstemp(dir=directory, suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w") as fh:
+                fh.write(data)
+            os.replace(tmp, path)
+        finally:
+            if os.path.exists(tmp):
+                os.unlink(tmp)
+
+    @classmethod
+    def load(cls, path: str, config: BankrollConfig) -> "BankrollManager":
+        """Rebuild a manager from a saved ledger.
+
+        ``config`` is supplied by the caller (it holds policy like stop-loss);
+        the persisted bankroll/bets/exclusion state is then restored on top.
+        """
+        with open(path) as fh:
+            d = json.load(fh)
+        version = d.get("schema_version")
+        if version != _SCHEMA_VERSION:
+            raise ValueError(
+                f"unsupported ledger schema_version {version!r} "
+                f"(expected {_SCHEMA_VERSION})"
+            )
+        excluded = d.get("excluded_until")
+        responsible = ResponsibleGambling(
+            excluded_until=date.fromisoformat(excluded) if excluded else None
+        )
+        mgr = cls(config=config, responsible=responsible)
+        mgr.starting = d.get("starting", config.starting_bankroll)
+        mgr.bankroll = d.get("bankroll", mgr.bankroll)
+        mgr._halted = d.get("halted", False)
+        mgr.bets = [BetRecord.from_dict(b) for b in d.get("bets", [])]
+        return mgr

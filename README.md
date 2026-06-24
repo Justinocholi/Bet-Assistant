@@ -121,10 +121,36 @@ Properties the adapter guarantees:
 - No third-party dependencies — it uses a small stdlib HTTP transport that is
   injectable, so the adapter is fully unit-tested offline against canned JSON.
 
-Football is mapped end-to-end (fixtures + 1X2 odds + team form). Basketball and
-tennis raise a clear error until their endpoint mappers are added — by design,
-rather than guessing. Historical backfill for backtesting is a separate batch
-job (see `get_results`).
+All three sports now have live adapters behind the same interface:
+
+- `APIFootballProvider` — fixtures + 1X2 odds + team form + head-to-head, plus
+  **injuries** and **rest days**. `get_results` backfills finished fixtures for
+  backtesting.
+- `APIBasketballProvider` (API-Basketball) — games + moneyline odds + scoring
+  form; `get_results` backfills finished games to train Elo/Glicko.
+- `APITennisProvider` — configurable (`base_url`/`auth_header`) because tennis
+  vendors differ; maps players + surface form + match-winner odds against a
+  small documented JSON shape.
+
+### Point-in-time backtesting (no look-ahead)
+
+`build_pointintime_results` reconstructs each fixture's form from **only the
+matches that happened before it**. Using season-aggregate stats (which include
+the match being predicted) leaks the future and inflates results — this builder
+avoids that, so a backtest reflects what the model could actually have known at
+kickoff. Historical odds can be attached for closing-line-value measurement.
+
+### Persistence
+
+The bankroll ledger survives restarts:
+
+```python
+mgr.save("ledger.json")
+mgr = BankrollManager.load("ledger.json", config.bankroll)
+```
+
+Bankroll, every bet, stop-loss state and any self-exclusion are persisted (atomic
+write, versioned schema).
 
 ## Status of models
 

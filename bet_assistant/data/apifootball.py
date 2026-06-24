@@ -145,6 +145,12 @@ class APIFootballProvider(DataProvider):
         home_form = self._team_form(home_id, home_name, missing, "home_form")
         away_form = self._team_form(away_id, away_name, missing, "away_form")
 
+        # Best-effort enrichment: injuries and rest days. Failures are flagged
+        # in ``missing`` and left at safe defaults rather than fabricated.
+        self._enrich_injuries(fixture_id, home_id, away_id,
+                              home_form, away_form, missing)
+        self._enrich_rest_days(home_id, away_id, on, home_form, away_form, missing)
+
         # Effective samples = fewest fixtures behind either side's form.
         effective = min(
             home_form.matches_played if home_form else 0,
@@ -291,14 +297,123 @@ class APIFootballProvider(DataProvider):
                         )
         return None
 
+    # -- injuries + rest days ---------------------------------------------
+
+    def _enrich_injuries(
+        self, fixture_id, home_id, away_id, home_form, away_form, missing
+    ) -> None:
+        try:
+            resp = self._get("injuries", {"fixture": fixture_id})
+        except ProviderError:
+            missing.append("injuries")
+            return
+        counts = {home_id: 0, away_id: 0}
+        for entry in resp or []:
+            tid = ((entry.get("team") or {}).get("id"))
+            if tid in counts:
+                counts[tid] += 1
+        if home_form is not None:
+            home_form.key_injuries = counts.get(home_id, 0)
+        if away_form is not None:
+            away_form.key_injuries = counts.get(away_id, 0)
+
+    def _enrich_rest_days(
+        self, home_id, away_id, on, home_form, away_form, missing
+    ) -> None:
+        for team_id, form in ((home_id, home_form), (away_id, away_form)):
+            if form is None:
+                continue
+            rest = self._rest_days(team_id, on)
+            if rest is None:
+                if "rest_days" not in missing:
+                    missing.append("rest_days")
+            else:
+                form.rest_days = rest
+
+    def _rest_days(self, team_id: int, before: date) -> Optional[int]:
+        """Days since the team's most recent finished fixture before ``before``."""
+        try:
+            resp = self._get(
+                "fixtures",
+                {"team": team_id, "season": self.season, "last": 1},
+            )
+        except ProviderError:
+            return None
+        for fx in resp or []:
+            ts = ((fx.get("fixture") or {}).get("date") or "")[:10]
+            try:
+                last = date.fromisoformat(ts)
+            except ValueError:
+                continue
+            if last < before:
+                return (before - last).days
+        return None
+
+    # -- historical backfill for backtesting ------------------------------
+
     def get_results(
-        self, sport: Sport, start: date, end: date
-    ) -> list[MatchResult]:  # pragma: no cover - requires live historical pulls
-        raise NotImplementedError(
-            "Historical result backfill for backtesting is a separate batch "
-            "job; use the fixtures/results endpoint with a date range and map "
-            "final scores to market outcomes."
+        self, sport: Sport, start: date, end: date, with_odds: bool = False
+    ) -> list[MatchResult]:
+        """Backfill finished fixtures in [start, end] as graded results.
+
+        Form is rebuilt **point-in-time** from the scores themselves (via
+        ``build_pointintime_results``), so a backtest never sees a team's
+        future matches. Set ``with_odds=True`` to also fetch each fixture's
+        closing line for closing-line-value measurement (one extra call per
+        fixture — slower and quota-heavy).
+        """
+        if sport is not Sport.FOOTBALL:
+            raise ProviderError(
+                f"APIFootballProvider supports football only; got {sport.value}."
+            )
+        # Import here to avoid a circular import at module load.
+        from .history import ScoredFixture, build_pointintime_results
+
+        raw = self._get(
+            "fixtures",
+            {
+                "league": self.league,
+                "season": self.season,
+                "from": start.isoformat(),
+                "to": end.isoformat(),
+                "status": "FT",  # full time only
+            },
         )
+
+        scored: list[ScoredFixture] = []
+        for fx in raw or []:
+            teams = fx.get("teams") or {}
+            home = (teams.get("home") or {}).get("name")
+            away = (teams.get("away") or {}).get("name")
+            goals = fx.get("goals") or {}
+            hg, ag = goals.get("home"), goals.get("away")
+            ts = ((fx.get("fixture") or {}).get("date") or "")[:10]
+            if home is None or away is None or hg is None or ag is None:
+                continue
+            try:
+                match_date = date.fromisoformat(ts)
+            except ValueError:
+                continue
+
+            odds: dict[str, dict[str, float]] = {}
+            if with_odds:
+                fixture_id = (fx.get("fixture") or {}).get("id")
+                line = self._match_winner_odds(fixture_id) if fixture_id else None
+                if line is not None:
+                    odds["1x2"] = line.selections
+
+            scored.append(
+                ScoredFixture(
+                    match_date=match_date,
+                    home=home,
+                    away=away,
+                    home_score=_as_int(hg),
+                    away_score=_as_int(ag),
+                    odds=odds,
+                )
+            )
+
+        return build_pointintime_results(scored, sport=Sport.FOOTBALL)
 
 
 # -- small, defensive coercion helpers --------------------------------------
