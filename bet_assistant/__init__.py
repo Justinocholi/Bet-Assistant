@@ -10,7 +10,7 @@ __version__ = "0.1.0"
 # results are rendered.
 RESPONSIBLE_GAMBLING_NOTICE = (
     "This tool estimates probabilities and edges; it does not predict outcomes "
-    "and offers no certainty. Betting risks real money you can lose. Set limits "
-    "in advance and stop when you reach them. If gambling stops being fun, take "
-    "a break — support is available (e.g. US: 1-800-GAMBLER)."
+    "and makes no promises about them. Betting risks real money you can lose. "
+    "Set limits in advance and stop when you reach them. If gambling stops being "
+    "fun, take a break — support is available (e.g. US: 1-800-GAMBLER)."
 )
