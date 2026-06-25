@@ -1,0 +1,3 @@
+# The bet_assistant package has NO third-party runtime dependencies — it is
+# pure Python standard library by design. This file exists so Vercel detects the
+# Python runtime for the serverless functions in api/. Leave it empty.

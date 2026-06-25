@@ -1,0 +1,12 @@
+# Keep the Vercel deployment lean: exclude the Python project tooling and tests
+# that the static site (public/) and serverless function (api/analyze.py) don't
+# need. The bet_assistant package IS kept — the function imports it, and Vercel's
+# Python builder bundles imported local modules automatically (zero-config).
+pyproject.toml
+tests/
+scripts/
+.github/
+.gitignore
+*.md
+**/__pycache__/
+.pytest_cache/

@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Bet Assistant — value analysis, not a prediction oracle</title>
+<style>
+  :root {
+    --bg: #0f1419; --panel: #1a2129; --panel2: #222b35; --line: #2d3742;
+    --text: #e6edf3; --muted: #9aa7b2; --green: #2ea043; --green-dim: #1f6f33;
+    --amber: #d29922; --red: #d1242f; --accent: #4493f8;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  /* Persistent responsible-gambling banner — always visible, sticky. */
+  #rg-banner {
+    position: sticky; top: 0; z-index: 50;
+    background: #3a2a00; color: #ffe9b8; border-bottom: 1px solid #5c4400;
+    padding: 10px 16px; font-size: 13px; text-align: center;
+  }
+  #rg-banner strong { color: #ffd166; }
+  header { padding: 28px 16px 8px; text-align: center; }
+  header h1 { margin: 0 0 4px; font-size: 24px; }
+  header p { margin: 0; color: var(--muted); }
+  main { max-width: 920px; margin: 0 auto; padding: 16px; }
+  .controls {
+    display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
+    justify-content: center; margin: 18px 0;
+  }
+  select, button {
+    background: var(--panel2); color: var(--text); border: 1px solid var(--line);
+    border-radius: 8px; padding: 9px 14px; font-size: 14px; cursor: pointer;
+  }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #04121f; font-weight: 600; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .disclaimer {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    padding: 12px 14px; color: var(--muted); font-size: 13px; margin: 12px 0 22px;
+  }
+  .summary { color: var(--muted); margin: 8px 0 16px; text-align: center; }
+  .card {
+    background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--green);
+    border-radius: 12px; padding: 16px 18px; margin: 12px 0;
+  }
+  .card .top { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .card .sel { font-weight: 600; font-size: 16px; }
+  .card .match { color: var(--muted); font-size: 13px; }
+  .pill { background: var(--green-dim); color: #d7ffd9; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px,1fr)); gap: 10px; margin: 12px 0; }
+  .metric { background: var(--panel2); border-radius: 8px; padding: 8px 10px; }
+  .metric .k { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+  .metric .v { font-size: 17px; font-weight: 600; }
+  /* Confidence band visual */
+  .band { margin: 8px 0; }
+  .band .track { position: relative; height: 10px; background: var(--panel2); border-radius: 999px; overflow: hidden; }
+  .band .fill { position: absolute; height: 100%; background: linear-gradient(90deg, #1f6f33, #2ea043); opacity: .55; }
+  .band .point { position: absolute; top: -3px; width: 2px; height: 16px; background: var(--text); }
+  .band .lbl { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  .why { color: #cdd9e5; font-size: 13px; margin-top: 8px; }
+  .nobet { color: var(--muted); font-size: 13px; padding: 6px 0; border-top: 1px solid var(--line); }
+  details { margin-top: 18px; }
+  summary { cursor: pointer; color: var(--accent); }
+  /* Self-exclusion panel */
+  .rg-tools { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin: 28px 0; }
+  .rg-tools h3 { margin: 0 0 6px; }
+  .rg-tools .row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .rg-tools button { background: var(--panel2); }
+  #paused {
+    display: none; background: #2a1416; border: 1px solid var(--red);
+    color: #ffd4d4; border-radius: 12px; padding: 18px; margin: 20px 0; text-align: center;
+  }
+  footer { color: var(--muted); font-size: 12px; text-align: center; padding: 24px 16px 40px; }
+  .err { color: #ffb3b3; background: #2a1416; border: 1px solid var(--red); border-radius: 10px; padding: 12px; }
+</style>
+</head>
+<body>
+  <div id="rg-banner">
+    <strong>Responsible gambling:</strong> This tool estimates probabilities and edges — it does not predict outcomes and makes no promises about them.
+    Betting risks real money you can lose. Set limits in advance and stop when you reach them. Support: <strong>1-800-GAMBLER</strong>.
+  </div>
+
+  <header>
+    <h1>Bet Assistant</h1>
+    <p>A value-betting <em>analysis</em> tool — not a prediction oracle. “No bet” is a normal, frequent result.</p>
+  </header>
+
+  <main>
+    <div class="controls">
+      <label>Sport:
+        <select id="sport">
+          <option value="football">Football (Dixon–Coles)</option>
+          <option value="basketball" selected>Basketball (Elo)</option>
+          <option value="tennis">Tennis (Glicko)</option>
+        </select>
+      </label>
+      <button id="run" class="primary">Analyse fixtures</button>
+    </div>
+
+    <div class="disclaimer" id="disclaimer">
+      Demonstration on synthetic sample data. The models are enabled here only to
+      illustrate the end-to-end output. On real markets a model is enabled only
+      after it beats the vig-free closing line in backtest. No outcome is ever assured.
+    </div>
+
+    <!-- Self-exclusion / cool-off -->
+    <div class="rg-tools">
+      <h3>Take a break (self-exclusion / cool-off)</h3>
+      <p style="color:var(--muted);margin:0;">Pause all recommendations for a chosen period. While paused, no value bets are shown.</p>
+      <div class="row">
+        <button data-cooloff="1">24 hours</button>
+        <button data-cooloff="7">7 days</button>
+        <button data-cooloff="30">30 days</button>
+        <button data-cooloff="180">6 months (self-exclude)</button>
+      </div>
+      <p id="rg-status" style="color:var(--muted);margin-top:10px;font-size:13px;"></p>
+    </div>
+
+    <div id="paused"></div>
+    <div class="summary" id="summary"></div>
+    <div id="results"></div>
+
+    <details id="nobets-wrap">
+      <summary>Show “no bet” reasons</summary>
+      <div id="nobets"></div>
+    </details>
+  </main>
+
+  <footer>
+    Bet Assistant · estimates, edges and uncertainty bands — never guarantees.
+    If gambling stops being fun, take a break.
+  </footer>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const RG_KEY = "bet_assistant_cooloff_until";
+
+function pct(n) { return (n == null || isNaN(n)) ? "—" : n.toFixed(1) + "%"; }
+
+// ---- Self-exclusion / cool-off (client-side, honest gating) -------------
+function cooloffUntil() {
+  const v = localStorage.getItem(RG_KEY);
+  if (!v) return null;
+  const d = new Date(v);
+  return isNaN(d) ? null : d;
+}
+function isPaused() {
+  const until = cooloffUntil();
+  return until && until.getTime() > Date.now();
+}
+function setCooloff(days) {
+  const until = new Date(Date.now() + days * 86400000);
+  localStorage.setItem(RG_KEY, until.toISOString());
+  renderRGStatus();
+  applyPauseState();
+}
+function renderRGStatus() {
+  const until = cooloffUntil();
+  const el = $("#rg-status");
+  if (until && until.getTime() > Date.now()) {
+    el.textContent = "Paused until " + until.toLocaleString() +
+      ". This is a self-imposed break and is being respected.";
+  } else {
+    el.textContent = "No break currently active.";
+  }
+}
+function applyPauseState() {
+  const paused = isPaused();
+  const pausedEl = $("#paused");
+  $("#run").disabled = paused;
+  if (paused) {
+    const until = cooloffUntil();
+    pausedEl.style.display = "block";
+    pausedEl.innerHTML = "<strong>Recommendations paused.</strong><br>" +
+      "You set a break until " + until.toLocaleString() +
+      ". No value bets are shown until then. Support is available — 1-800-GAMBLER.";
+    $("#results").innerHTML = "";
+    $("#summary").textContent = "";
+    $("#nobets-wrap").style.display = "none";
+  } else {
+    pausedEl.style.display = "none";
+    $("#nobets-wrap").style.display = "";
+  }
+}
+
+document.querySelectorAll("[data-cooloff]").forEach(b => {
+  b.addEventListener("click", () => {
+    const days = parseInt(b.dataset.cooloff, 10);
+    if (confirm("Pause all recommendations for " + days + " day(s)? " +
+                "This cannot be undone until the period ends.")) {
+      setCooloff(days);
+    }
+  });
+});
+
+// ---- Rendering ----------------------------------------------------------
+function bandHtml(r) {
+  const lo = r.band_low_pct, hi = r.band_high_pct, p = r.model_prob_pct;
+  const fillLeft = lo, fillW = Math.max(0, hi - lo);
+  return `<div class="band">
+    <div class="track">
+      <div class="fill" style="left:${fillLeft}%;width:${fillW}%"></div>
+      <div class="point" style="left:${p}%"></div>
+    </div>
+    <div class="lbl">Uncertainty band: ${pct(lo)} – ${pct(hi)} (model estimate ${pct(p)}; never a single certain number)</div>
+  </div>`;
+}
+function cardHtml(r) {
+  return `<div class="card">
+    <div class="top">
+      <div>
+        <div class="sel">${r.market} · ${r.selection} @ ${r.decimal_odds.toFixed(2)}</div>
+        <div class="match">${r.match || ""}</div>
+      </div>
+      <span class="pill">VALUE · EV ${r.ev_pct >= 0 ? "+" : ""}${pct(r.ev_pct)}</span>
+    </div>
+    <div class="grid">
+      <div class="metric"><div class="k">Model prob</div><div class="v">${pct(r.model_prob_pct)}</div></div>
+      <div class="metric"><div class="k">Market (vig-free)</div><div class="v">${pct(r.vig_free_pct)}</div></div>
+      <div class="metric"><div class="k">Edge</div><div class="v">+${pct(r.edge_pts)}</div></div>
+      <div class="metric"><div class="k">Suggested stake</div><div class="v">${r.stake.toFixed(2)} <span style="font-size:12px;color:var(--muted)">(${r.stake_pct}%)</span></div></div>
+    </div>
+    ${bandHtml(r)}
+    <div class="why">${r.reasoning}</div>
+  </div>`;
+}
+
+async function analyse() {
+  if (isPaused()) { applyPauseState(); return; }
+  const sport = $("#sport").value;
+  const results = $("#results"), summary = $("#summary");
+  $("#run").disabled = true;
+  summary.textContent = "Analysing…";
+  results.innerHTML = "";
+  try {
+    const res = await fetch("/api/analyze?sport=" + encodeURIComponent(sport));
+    const data = await res.json();
+    if (data.disclaimer) {
+      const src = data.source === "api-football"
+        ? "Live data via API-Football."
+        : "Synthetic sample data.";
+      const note = data.note ? " " + data.note : "";
+      $("#disclaimer").textContent = src + " " + data.disclaimer + note;
+    }
+    if (data.error) {
+      results.innerHTML = `<div class="err">Data unavailable: ${data.error}. ` +
+        `The tool surfaces this instead of guessing.</div>`;
+      summary.textContent = "";
+      return;
+    }
+    const recs = data.recommendations || [];
+    summary.textContent = (data.summary && data.summary.message) ||
+      `Flagged ${recs.length} value bet(s).`;
+    results.innerHTML = recs.length
+      ? recs.map(cardHtml).join("")
+      : `<div class="disclaimer">No value bets found — that is a normal and frequent outcome.</div>`;
+
+    const nb = data.no_bets || [];
+    $("#nobets").innerHTML = nb.length
+      ? nb.map(n => `<div class="nobet"><strong>${n.match || ""}</strong> · ${n.market}/${n.selection} — ${n.reason}</div>`).join("")
+      : `<div class="nobet">—</div>`;
+  } catch (e) {
+    results.innerHTML = `<div class="err">Request failed: ${e.message}</div>`;
+    summary.textContent = "";
+  } finally {
+    $("#run").disabled = isPaused();
+  }
+}
+
+$("#run").addEventListener("click", analyse);
+renderRGStatus();
+applyPauseState();
+if (!isPaused()) analyse();
+</script>
+</body>
+</html>
