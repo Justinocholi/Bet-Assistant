@@ -88,7 +88,7 @@ bet_assistant/
   pipeline.py          Wires data -> model -> odds -> value -> staking
   demo.py              Reusable demo analysis (shared by CLI and web API)
   cli.py               Demo entry point
-api/                   Vercel Python serverless functions (api/analyze.py)
+app.py                 WSGI web-app entrypoint (serves UI + /api/analyze on Vercel)
 public/                Static web frontend (index.html)
 scripts/devserver.py   Local dev server mirroring Vercel routing
 tests/                 Unit tests for the math and the guarantees
@@ -116,13 +116,13 @@ vercel              # from the repo root; accept the defaults
 
 How it maps to Vercel:
 
-- `public/index.html` is served as the static site at `/`.
-- `api/analyze.py` is a Python serverless function at `/api/analyze?sport=…`.
-  It returns a JSON demo analysis from `bet_assistant.demo.run_demo`.
-- `vercel.json` wires the function (memory/timeout) and bundles the
-  `bet_assistant/` package with it via `includeFiles`.
-- `requirements.txt` is intentionally empty — the package is pure standard
-  library, so there is nothing to install.
+- `app.py` is a **WSGI web app** (exposed as `app`) built by `@vercel/python`.
+  All routes go to it: `/` serves `public/index.html`, `/api/analyze?sport=…`
+  returns the JSON analysis from `bet_assistant.demo.run_analysis`.
+- `vercel.json` builds `app.py` and bundles `public/` and `bet_assistant/`
+  alongside it via `includeFiles`, then routes every path to the app.
+- `requirements.txt` is intentionally empty — the app is pure standard library
+  (PEP 3333 WSGI), so there is nothing to install.
 
 ### Ingesting real data on Vercel
 
