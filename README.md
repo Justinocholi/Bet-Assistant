@@ -124,12 +124,26 @@ How it maps to Vercel:
 - `requirements.txt` is intentionally empty — the package is pure standard
   library, so there is nothing to install.
 
-> The hosted demo runs on **synthetic data** with the models enabled purely to
-> illustrate the output. It is a demonstration of the analysis surface, not live
-> betting advice — every model is still disabled by default in real use until it
-> beats the vig-free closing line in backtest. To serve real fixtures, swap
-> `MockProvider` for `APIFootballProvider` (store the key as a Vercel
-> environment variable) inside the serverless function.
+### Ingesting real data on Vercel
+
+The `/api/analyze` function ingests **real football fixtures** when these
+environment variables are set (Vercel → Project → Settings → Environment
+Variables); otherwise it returns clearly-labelled synthetic data so the site
+always responds:
+
+```
+APIFOOTBALL_KEY      your API-Football key
+APIFOOTBALL_LEAGUE   numeric league id (e.g. 39 = Premier League)
+APIFOOTBALL_SEASON   season year (e.g. 2023)
+```
+
+The same variables work locally: `APIFOOTBALL_KEY=... python scripts/devserver.py`.
+
+> Even with live data, models are illustrative until validated. On real money a
+> model is enabled only after it beats the vig-free closing line in backtest —
+> no outcome is ever assured. Live ingestion currently covers football (the
+> sport with a complete end-to-end mapper); basketball/tennis fall back to
+> synthetic data until their live mappers are added.
 
 ## Using a real data provider (API-Football)
 

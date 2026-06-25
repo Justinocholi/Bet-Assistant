@@ -21,7 +21,15 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 PUBLIC = os.path.join(ROOT, "public")
 
-from bet_assistant.demo import run_demo, supported_sports  # noqa: E402
+from bet_assistant.demo import run_analysis, supported_sports  # noqa: E402
+
+
+def _int_env(name):
+    raw = os.environ.get(name)
+    try:
+        return int(raw) if raw not in (None, "") else None
+    except ValueError:
+        return None
 
 _CONTENT_TYPES = {".html": "text/html", ".js": "application/javascript",
                   ".css": "text/css", ".json": "application/json"}
@@ -46,7 +54,12 @@ class Handler(BaseHTTPRequestHandler):
             params = parse_qs(parsed.query)
             sport = (params.get("sport", ["basketball"])[0] or "basketball").lower()
             try:
-                body = run_demo(sport)
+                body = run_analysis(
+                    sport,
+                    api_key=os.environ.get("APIFOOTBALL_KEY"),
+                    league=_int_env("APIFOOTBALL_LEAGUE"),
+                    season=_int_env("APIFOOTBALL_SEASON"),
+                )
                 status = 200
             except ValueError as exc:
                 body = {"error": str(exc), "supported_sports": list(supported_sports())}

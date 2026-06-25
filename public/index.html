@@ -237,7 +237,13 @@ async function analyse() {
   try {
     const res = await fetch("/api/analyze?sport=" + encodeURIComponent(sport));
     const data = await res.json();
-    if (data.disclaimer) $("#disclaimer").textContent = data.disclaimer;
+    if (data.disclaimer) {
+      const src = data.source === "api-football"
+        ? "Live data via API-Football."
+        : "Synthetic sample data.";
+      const note = data.note ? " " + data.note : "";
+      $("#disclaimer").textContent = src + " " + data.disclaimer + note;
+    }
     if (data.error) {
       results.innerHTML = `<div class="err">Data unavailable: ${data.error}. ` +
         `The tool surfaces this instead of guessing.</div>`;

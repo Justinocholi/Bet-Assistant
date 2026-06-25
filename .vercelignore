@@ -1,17 +1,12 @@
-# Keep the Vercel deployment surface minimal: only what the serverless function
-# and static site need. The bet_assistant package is bundled into the function
-# via vercel.json -> functions.includeFiles, so it does not need to be at the
-# deployment root here.
-#
-# Everything below is irrelevant to the runtime and can confuse the Python
-# build detector if left in the deployment root.
+# Keep the Vercel deployment lean: exclude the Python project tooling and tests
+# that the static site (public/) and serverless function (api/analyze.py) don't
+# need. The bet_assistant package IS kept — the function imports it, and Vercel's
+# Python builder bundles imported local modules automatically (zero-config).
 pyproject.toml
 tests/
 scripts/
 .github/
-.git/
 .gitignore
 *.md
-bet_assistant/**/__pycache__/
-__pycache__/
+**/__pycache__/
 .pytest_cache/
