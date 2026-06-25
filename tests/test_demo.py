@@ -63,17 +63,53 @@ def test_run_analysis_falls_back_to_synthetic_without_key():
     assert payload["error"] is None
 
 
+def _fake_apifootball_transport():
+    """Self-contained fake routing canned API-Football JSON by URL path.
+
+    Kept independent of other test modules so it works under any pytest import
+    mode (CI runs `pytest`, which does not put the repo root on sys.path).
+    """
+    def transport(url, headers):
+        if "/fixtures/headtohead" in url:
+            return {"errors": [], "response": [
+                {"teams": {"home": {"winner": True}, "away": {"winner": False}}},
+            ]}
+        if "/injuries" in url:
+            return {"errors": [], "response": []}
+        if "/fixtures" in url and "last=" in url:
+            return {"errors": [], "response": [
+                {"fixture": {"id": 900, "date": "2023-07-25T15:00:00+00:00"}}]}
+        if "/fixtures" in url:
+            return {"errors": [], "response": [
+                {"fixture": {"id": 1001},
+                 "teams": {"home": {"id": 33, "name": "Man Utd"},
+                           "away": {"id": 40, "name": "Liverpool"}}}]}
+        if "/teams/statistics" in url:
+            return {"errors": [], "response": {
+                "form": "WWDLW",
+                "fixtures": {"played": {"home": 9, "away": 9, "total": 18}},
+                "goals": {"for": {"average": {"home": "1.8", "away": "1.3"}},
+                          "against": {"average": {"home": "0.9", "away": "1.2"}}}}}
+        if "/odds" in url:
+            return {"errors": [], "response": [{"bookmakers": [{"name": "B", "bets": [
+                {"id": 1, "values": [
+                    {"value": "Home", "odd": "2.10"},
+                    {"value": "Draw", "odd": "3.40"},
+                    {"value": "Away", "odd": "3.60"}]}]}]}]}
+        raise AssertionError(f"unexpected url {url}")
+    return transport
+
+
 def test_run_analysis_live_football_uses_real_provider(monkeypatch):
-    # Reuse the API-Football fake transport to drive a live run offline.
     from datetime import date
-    from tests.test_apifootball import FakeTransport
     from bet_assistant.data import apifootball
 
     real_init = apifootball.APIFootballProvider.__init__
 
     def patched_init(self, api_key, league, season, base_url=apifootball._BASE_URL,
                      transport=None):
-        real_init(self, api_key, league, season, base_url, transport=FakeTransport())
+        real_init(self, api_key, league, season, base_url,
+                  transport=_fake_apifootball_transport())
 
     monkeypatch.setattr(apifootball.APIFootballProvider, "__init__", patched_init)
 
